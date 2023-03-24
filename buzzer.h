@@ -22,11 +22,11 @@ void playSound() {
     // Serial.println(lastMillis - currentMillis);
     if(lastMillis - currentMillis <= interval){
       tone(buzzer, notes[currentNote]);
-      Serial.println("B");
+      // Serial.println("B");
     }      
     if(lastMillis - currentMillis > interval){
       currentNote++;
-      Serial.print("Check : ");
+      // Serial.print("Check : ");
       Serial.println(currentNote);
       currentMillis = millis();
       lastMillis = millis();

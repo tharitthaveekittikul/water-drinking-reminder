@@ -6,6 +6,7 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <TridentTD_LineNotify.h>
+#include <JC_Button.h>
 #include "mqtt_secrets.h"
 #include "secrets.h"
 #include "RTC.h"
@@ -13,9 +14,17 @@
 
 #define I2C_SDA 21
 #define I2C_SCL 22
+
+// 3 Button Module
 #define K1 34
 #define K2 35
 #define K3 32
+// PIN, DEBOUNCE, PULLUP, INVERT
+Button redButton(K1, 25, true, true);
+Button yellowButton(K2, 25, true, true);
+Button greenButton(K3, 25, true, true);
+// default state 1 --> show Temperature
+int buttonState = 1;
 
 // Thingspeak MQTT & Wifi Setup
 const char *ssid = SECRET_WIFI_SSID;
@@ -25,18 +34,6 @@ const char *channelID = SECRET_CHANNELID;
 const char *mqttUserName = SECRET_MQTT_USERNAME;
 const char *mqttPass = SECRET_MQTT_PASSWORD;
 const char *clientID = SECRET_MQTT_CLIENT_ID;
-
-// Thingspeak for LINE MessageAPI
-// const char *mqtt_chennelID_LINE = SECRET_CHANNELID_LINE;
-// const char *mqtt_READAPI_KEY = SECRET_READAPI_LINE;
-
-// // Line message API Setup
-// const char *LINE_API = "https://api.line.me/v2/bot/message/push";
-// const int httpsPort = 443;
-// const char *LINE_TOKEN = SECRET_LINE_TOKEN;
-// const char *channelSecret = SECRET_CHANNEL;
-// const char *groupLine = SECRET_GROUP;
-// bool connected = false;
 
 // Line Notify
 const char *NOTIFY_TOKEN = LINE_NOTIFY_TOKEN;
@@ -81,57 +78,64 @@ void setup() {
   // day of week (1=Sunday, 7=Saturday)
   // set date (1 to 31)
   // set year (2000+ (0-99)) ex: 2023
-  setTime(55, 44, 20, 4, 22, 11, 2023);
+  rtc.begin();
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   // ************************
 
   // ****** Pinmode Setup ******
   pinMode(buzzer, OUTPUT);
+  redButton.begin();
+  yellowButton.begin();
+  greenButton.begin();
+  // pinMode(K1,INPUT_PULLUP);
+  // pinMode(K2,INPUT_PULLUP);
+  // pinMode(K3,INPUT_PULLUP);
   // ***************************
-  pinMode(34,INPUT_PULLUP);
-  pinMode(35,INPUT_PULLUP);
-  pinMode(32,INPUT_PULLUP);
-  // attachInterrupt(digitalPinToInterrupt(34),check,FALLING);
-  // attachInterrupt(digitalPinToInterrupt(35),check2,FALLING);
-  // attachInterrupt(35,check,FALLING);
-  // attachInterrupt(32,check,FALLING);
 }
 
 void loop() {
   checkStatusWifi();
-  // checkStatusMQTT();
+  checkStatusMQTT();
   checkStatusNotify();
   // checkStatusMessageAPI();
   // showDisplayTemp();
-  readTime(&second, &minute, &hour, &dateOfWeek, &dayOfMonth, &month, &year);
-  showTime();
-  swRead();
+  readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
+  // increase 1 for correct dayOfWeek
+  if(firstTime){
+    dayOfWeek++;
+    setTime(second,minute,hour,dayOfWeek,dayOfMonth,month,year);
+    firstTime = false;
+  }
+  showTime();  // show in Serial Monitor
+  readButton();
   // showDisplayTime();
   alarm();
   // playSound();
 
   delay(1000);
 }
-int st = 1;
-void swRead(){
-  int red = digitalRead(34);
-  int yel = digitalRead(35);
-  int grn = digitalRead(32);
-  if(grn == 0){st = 1;}
-  if(red == 0){st = 2;}
-  if(yel == 0){st = 3;}
-  switch (st){
-    case 1 : 
-      Serial.println("-------------------------------1");
-      showDisplayTime();
-      break;
-    case 2 : 
-      Serial.println("-------------------------------3");
+
+void readButton() {
+  if (greenButton.read()) {
+    buttonState = 1;
+  } else if (yellowButton.read()) {
+    buttonState = 2;
+  } else if (redButton.read()) {
+    buttonState = 3;
+  }
+  switch (buttonState) {
+    case 1:
+      Serial.println("Show Temperature");
       showDisplayTemp();
       break;
-    case 3 : 
-      Serial.println("-------------------------------2");
-      showDisplayHum();
-      break;      
+    case 2:
+      Serial.println("Show Humidity");
+      showDisplayHumidity();
+      break;
+    case 3:
+      Serial.println("Show Real Time Clock");
+      showDisplayTime();
+      break;
   }
 }
 //   pinMode(34,INPUT);
@@ -153,7 +157,7 @@ void swRead(){
 //     stateShow = "Clock: ";
 //   }
 //   showDisplayTime();
-  
+
 // }
 
 void checkStatusWifi() {
@@ -293,8 +297,6 @@ void postDataMQTT() {
 }
 
 void showDisplayTemp() {
-  // This function show Temperature, Humidity and Real time clock
-
   // Clear Screen
   OLED.clearDisplay();
   // Define textColor BLACK and Background WHITE
@@ -302,15 +304,13 @@ void showDisplayTemp() {
   // Define position x,y
   OLED.setCursor(0, 0);
   // Set text size
-  OLED.setTextSize(3);
+  OLED.setTextSize(2);
   // Show text
   OLED.println("TEMP:");
   // OLED display
   OLED.display();
 }
-void showDisplayHum() {
-  // This function show Temperature, Humidity and Real time clock
-
+void showDisplayHumidity() {
   // Clear Screen
   OLED.clearDisplay();
   // Define textColor BLACK and Background WHITE
@@ -318,7 +318,7 @@ void showDisplayHum() {
   // Define position x,y
   OLED.setCursor(0, 0);
   // Set text size
-  OLED.setTextSize(3);
+  OLED.setTextSize(2);
   // Show text
   OLED.println("Humidity:");
   // OLED display
@@ -340,6 +340,9 @@ void showDisplayTime() {
   OLED.println("Clock:");
 
   OLED.setTextColor(WHITE, BLACK);
+  if (hour < 10) {
+    OLED.print("0");
+  }
   OLED.print(hour, DEC);
   OLED.print(":");
   if (minute < 10) {
@@ -354,11 +357,13 @@ void showDisplayTime() {
 
   OLED.print(dayOfMonth, DEC);
   OLED.print("/");
+  if (month < 10) {
+    OLED.print("0");
+  }
   OLED.print(month, DEC);
   OLED.print("/");
   OLED.println(year, DEC);
-
-  switch (dateOfWeek) {
+  switch (dayOfWeek) {
     case 1:
       OLED.println("SUN");
       break;
