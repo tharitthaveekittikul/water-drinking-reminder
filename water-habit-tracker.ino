@@ -40,6 +40,17 @@ const char *clientID = SECRET_MQTT_CLIENT_ID;
 const char *NOTIFY_TOKEN = LINE_NOTIFY_TOKEN;
 bool line_connected = false;
 
+// Waiting after notify
+bool isCoolDownTemp = false;
+bool isCoolDownHumidity = false;
+uint tempTime, humidityTime;
+
+// MQTT POST
+unsigned long previousMillis = 0; // variable to store the previous millis() value
+const unsigned long interval = 500; // interval at which to update the half second count (in ms)
+const unsigned int publishInterval = 15000; // interval at which to publish data (in ms)
+unsigned long lastPublishTime = 0; // variable to store the last time data was published
+
 WiFiClient client;
 PubSubClient mqtt(client);
 
@@ -57,9 +68,8 @@ Adafruit_SSD1306 OLED(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup() {
   Serial.begin(9600);
-  // while(!Serial){
-  //   delay(1);
-  // }
+  while (!Serial)
+    ;
 
   // hostname/IP server, port MQTT
   mqtt.setServer(server, 1883);
@@ -101,10 +111,9 @@ void setup() {
 }
 
 void loop() {
-  // checkStatusWifi();
-  // checkStatusMQTT();
-  // checkStatusNotify();
-
+  checkStatusWifi();
+  checkStatusMQTT();
+  checkStatusNotify();
   readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
   // increase 1 for correct dayOfWeek
   if (firstTime) {
@@ -120,6 +129,8 @@ void loop() {
   getHumidity();
   readButton();
   alarm();
+  postDataMQTT();
+  resetCoolDown();
   delay(1000);
 }
 
@@ -191,32 +202,66 @@ void checkStatusNotify() {
 }
 
 void alarm() {
-  // if ((hour == 20 && minute == 45) && (second >= 0 && second < 5)) {
-  if ((hour == 1 && minute == 8) && (second >= 0 && second < 5)) {
+  if ((hour == 1 && minute == 31) && (second >= 0 && second < 5)) {
     Serial.println("Alarm");
-    // playSound();
-    playNotes(buzzer,7);
+    playNotes(buzzer, 7);
+  }
+}
+
+void notifyLine(String type, float value) {
+  if (type == "Temp" && !isCoolDownTemp) {
+    if (value >= 30) {
+      playNotes(buzzer, 7);
+      LINE.notify("Temperature : " + String(value,2) + " *C\n" + "ดื่มน้ำหน่อยอากาศร้อนมาก!!");
+      isCoolDownTemp = true;
+      // CountDown 30 minutes --> change state time to false
+      tempTime = second;
+    }
+  } else if (type == "Humidity" && !isCoolDownHumidity) {
+    if (value < 58) {
+      playNotes(buzzer, 7);
+      LINE.notify("Relative Humidity : " + String(value,2) + " %\n" + "ดื่มน้ำหน่อยอากาศแห้งเดียวเจ็บคอ");
+      isCoolDownHumidity = true;
+      humidityTime = second;
+    }
+  }
+  // else if Time also
+}
+
+void resetCoolDown() {
+  static uint32_t lastPrintTime = 0;
+  // timeIntervalReset can Change
+  const unsigned int timeIntervalReset = 300000; // 30 min
+  uint32_t currentTime = millis();
+  if (currentTime - lastPrintTime >= timeIntervalReset) {
+    isCoolDownTemp = false;
+    isCoolDownHumidity = false;
+    
+    // Update the last print time
+    lastPrintTime = currentTime;
   }
 }
 
 void postDataMQTT() {
-  unsigned static int half_second_count = 0;
+  notifyLine("Temp", temp);
+  notifyLine("Humidity", humidity);
 
-  //Post MQTT get to ThingSpeak Every 15 seconds
-  if (half_second_count >= 30) {
-    // Reset Timer
-    half_second_count = 0;
-
-    // String dataString = "&field1=" + String(temp);
-    // String topicString = "channels/" + String(channelID) + "/publish";
-    // mqtt.publish( topicString.c_str(), dataString.c_str());
-    // Serial.println("Temp = " + String(temp));
-    // digitalWrite(LED_IOT, !digitalRead(LED_IOT));
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    // half_second_count++;
   }
 
-  // Update Half Seconds every 500 ms
-  delay(500);
-  half_second_count++;
+  // Publish data every `publishInterval` milliseconds
+  if (currentMillis - lastPublishTime >= publishInterval) {
+    lastPublishTime = currentMillis;
+    String topicString = "channels/" + String(channelID) + "/publish";
+    String dataString = "&field1=" + String(temp);
+    mqtt.publish(topicString.c_str(), dataString.c_str());
+
+    dataString = "&field2=" + String(humidity);
+    mqtt.publish(topicString.c_str(), dataString.c_str());
+  }
 }
 
 void showDisplayTemp() {
