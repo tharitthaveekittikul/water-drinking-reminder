@@ -12,6 +12,7 @@
 #include "RTC.h"
 #include "buzzer.h"
 #include "temp_humidity.h"
+#include "rotary.h"
 
 #define I2C_SDA 21
 #define I2C_SCL 22
@@ -43,13 +44,14 @@ bool line_connected = false;
 // Waiting after notify
 bool isCoolDownTemp = false;
 bool isCoolDownHumidity = false;
-uint tempTime, humidityTime;
+// uint tempTime, humidityTime;
+int prevMin;
 
 // MQTT POST
-unsigned long previousMillis = 0; // variable to store the previous millis() value
-const unsigned long interval = 500; // interval at which to update the half second count (in ms)
-const unsigned int publishInterval = 15000; // interval at which to publish data (in ms)
-unsigned long lastPublishTime = 0; // variable to store the last time data was published
+unsigned long previousMillis = 0;            // variable to store the previous millis() value
+const unsigned long interval = 500;          // interval at which to update the half second count (in ms)
+const unsigned int publishInterval = 15000;  // interval at which to publish data (in ms)
+unsigned long lastPublishTime = 0;           // variable to store the last time data was published
 
 WiFiClient client;
 PubSubClient mqtt(client);
@@ -101,13 +103,21 @@ void setup() {
   rtc.begin();
   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   // ************************
+  readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
+  prevMin = minute;
 
   // ****** Pinmode Setup ******
   pinMode(buzzer, OUTPUT);
   redButton.begin();
   yellowButton.begin();
   greenButton.begin();
+  pinMode(SW_PIN, INPUT_PULLUP);
+  pinMode(DT_PIN, INPUT_PULLUP);
+  pinMode(CLK_PIN, INPUT_PULLUP);
   // ***************************
+
+  // interrupt for DT PIN
+  attachInterrupt(digitalPinToInterrupt(DT_PIN), handleDTInterrupt, CHANGE);
 }
 
 void loop() {
@@ -137,10 +147,16 @@ void loop() {
 void readButton() {
   if (greenButton.read()) {
     buttonState = 1;
+    canInterrupt = false;
   } else if (yellowButton.read()) {
     buttonState = 2;
+    canInterrupt = false;
   } else if (redButton.read()) {
     buttonState = 3;
+    canInterrupt = false;
+  } else if (isPressSwitchRT()) {
+    buttonState = 4;
+    canInterrupt = true;
   }
   switch (buttonState) {
     case 1:
@@ -154,6 +170,10 @@ void readButton() {
     case 3:
       Serial.println("Show Real Time Clock");
       showDisplayTime();
+      break;
+    case 4:
+      Serial.println("Show Set Timer");
+      showDisplaySetTimer();
       break;
   }
 }
@@ -212,31 +232,36 @@ void notifyLine(String type, float value) {
   if (type == "Temp" && !isCoolDownTemp) {
     if (value >= 30) {
       playNotes(buzzer, 7);
-      LINE.notify("Temperature : " + String(value,2) + " *C\n" + "ดื่มน้ำหน่อยอากาศร้อนมาก!!");
+      LINE.notify("Temperature : " + String(value, 2) + " *C\n" + "ดื่มน้ำหน่อยอากาศร้อนมาก!!");
       isCoolDownTemp = true;
       // CountDown 30 minutes --> change state time to false
-      tempTime = second;
     }
   } else if (type == "Humidity" && !isCoolDownHumidity) {
     if (value < 58) {
       playNotes(buzzer, 7);
-      LINE.notify("Relative Humidity : " + String(value,2) + " %\n" + "ดื่มน้ำหน่อยอากาศแห้งเดียวเจ็บคอ");
+      LINE.notify("Relative Humidity : " + String(value, 2) + " %\n" + "ดื่มน้ำหน่อยอากาศแห้งเดียวเจ็บคอ");
       isCoolDownHumidity = true;
-      humidityTime = second;
     }
   }
   // else if Time also
+  else if (type == "Timer") {
+    if (minute == prevMin + value) {
+      prevMin = minute;
+      playNotes(buzzer,7);
+      LINE.notify("ครบ " + String(minTimer) + " นาทีแล้วดื่มน้ำหน่อยนะ");
+    }
+  }
 }
 
 void resetCoolDown() {
   static uint32_t lastPrintTime = 0;
   // timeIntervalReset can Change
-  const unsigned int timeIntervalReset = 300000; // 30 min
+  const unsigned int timeIntervalReset = 300000;  // 5 min
   uint32_t currentTime = millis();
   if (currentTime - lastPrintTime >= timeIntervalReset) {
     isCoolDownTemp = false;
     isCoolDownHumidity = false;
-    
+
     // Update the last print time
     lastPrintTime = currentTime;
   }
@@ -245,6 +270,7 @@ void resetCoolDown() {
 void postDataMQTT() {
   notifyLine("Temp", temp);
   notifyLine("Humidity", humidity);
+  notifyLine("Timer",minTimer);
 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
@@ -276,10 +302,10 @@ void showDisplayTemp() {
   // Show text
   OLED.println(" TEMP ");
 
-  OLED.setCursor((SCREEN_WIDTH - 10 * 10) / 2, 0);
   OLED.println("\n");
   OLED.setTextColor(WHITE, BLACK);
   OLED.setTextSize(2);
+  OLED.setCursor((SCREEN_WIDTH - 9 * 9) / 2, (SCREEN_HEIGHT) / 2);
   OLED.print(temp);
   OLED.println(" *C");
 
@@ -368,6 +394,42 @@ void showDisplayTime() {
       OLED.println("SAT");
       break;
   }
+
+  // OLED display
+  OLED.display();
+}
+
+void showDisplaySetTimer() {
+  // Clear Screen
+  OLED.clearDisplay();
+  // Define textColor BLACK and Background WHITE
+  OLED.setTextColor(BLACK, WHITE);
+  // Define position x,y
+  OLED.setCursor(0, 0);
+  // Set text size
+  OLED.setTextSize(2);
+  // Show text
+  OLED.println("Set Timer");
+  OLED.setTextColor(WHITE, BLACK);
+  OLED.println("\n");
+  OLED.setCursor((SCREEN_WIDTH - 6 * 6) / 2, (SCREEN_HEIGHT) / 2);
+  OLED.setTextSize(3);
+
+
+  // if (hourTimer < 10) {
+  //   OLED.print("0");
+  // }
+  // OLED.print(hourTimer, DEC);
+  // OLED.print(":");
+  if (minTimer < 10) {
+    OLED.print("0");
+  }
+  OLED.print(minTimer, DEC);
+  // OLED.print(":");
+  // if (secondTimer < 10) {
+  //   OLED.print("0");
+  // }
+  // OLED.println(secondTimer, DEC);
 
   // OLED display
   OLED.display();
