@@ -1,79 +1,60 @@
 #define buzzer 13  // pin D13
 
-int notes[] = { 261, 293, 329, 349, 392 };
-int currentNote = 0;
-// unsigned long prevMillis = 0;
-// const long interval = 200;
+int notes[] = { 261, 293, 329, 349, 392, 440, 493 };
+int durations[] = { 500, 500, 500, 500, 500, 500, 500 };
 
-void playSound() {
-  int currentNote = 0;
-  unsigned long lastMillis = millis();
-  unsigned long interval = 200;
-  unsigned long currentMillis = millis();
-  // Serial.print("Check : ");
-  // Serial.println(currentNote);
-  
-  while(currentNote<=4){
-    lastMillis = millis();
-    // Serial.print(currentMillis);
-    // Serial.print(" - ");
-    // Serial.print(lastMillis);
-    // Serial.print(" = ");
-    // Serial.println(lastMillis - currentMillis);
-    if(lastMillis - currentMillis <= interval){
-      tone(buzzer, notes[currentNote]);
-      // Serial.println("B");
-    }      
-    if(lastMillis - currentMillis > interval){
-      currentNote++;
-      // Serial.print("Check : ");
-      Serial.println(currentNote);
-      currentMillis = millis();
-      lastMillis = millis();
-      noTone(buzzer);
+// Non-blocking
+// const unsigned long interval = 200;  // interval between notes in milliseconds
+// unsigned long previousMillis = 0;    // variable to store the previous time
+// int state = 0;                       // state variable for the state machine
+
+// void playSound() {
+//   while (true) {
+//     switch (state) {
+//       case 0:
+//         tone(buzzer, 261);  //C
+//         break;
+//       case 1:
+//         tone(buzzer, 293);  //D
+//         break;
+//       case 2:
+//         tone(buzzer, 329);  //E
+//         break;
+//       case 3:
+//         tone(buzzer, 349);  //F
+//         break;
+//       case 4:
+//         tone(buzzer, 392);  //G
+//         break;
+//     }
+
+//     // Check if it's time to switch to the next note
+//     unsigned long currentMillis = millis();
+//     if (currentMillis - previousMillis >= interval) {
+//       previousMillis = currentMillis;
+//       state++;
+//     }
+//   }
+//   if (state > 4) {  // reset the state machine after playing all notes
+//     state = 0;
+//   }
+//   noTone(buzzer);
+// }
+
+void playNotes(int pin, int numNotes) {
+  static unsigned long previousTime = 0;
+  static int noteIndex = 0;
+
+  // Check if it's time to play the next note
+  if (millis() - previousTime >= durations[noteIndex]) {
+    previousTime = millis();
+    tone(pin, notes[noteIndex], durations[noteIndex]);
+    noteIndex++;
+
+    // Reset the note index and stop playing the sound after playing all notes
+    if (noteIndex >= numNotes) {
+      noteIndex = 0;
+      noTone(pin);
     }
   }
-  noTone(buzzer);
-
-  // delay(5000);
 }
-
-  // unsigned long currentMillis = millis();
-  // if (currentMillis - prevMillis >= interval) {
-  //   prevMillis = currentMillis;
-  //   if (digitalRead(buzzer) == LOW) {
-  //     // currentNote = (currentNote + 1) % (sizeof(notes) / sizeof(notes[0]));
-  //     tone(buzzer, notes[currentNote]);
-  //     currentNote++;
-  //     if (currentNote == 5) {
-  //       currentNote = 0;
-  //     }
-  //   } else {
-  //     noTone(buzzer);
-  //   }
-  //   noTone(buzzer);
-  // }
-
-  // // Sounds the buzzer at the frequency relative to the note C in Hz
-  // tone(buzzer, 261);
-  // // Waits some time to turn off
-  // delay(200);
-  // //Turns the buzzer off
-  // noTone(buzzer);
-  // // Sounds the buzzer at the frequency relative to the note D in Hz
-  // tone(buzzer, 293);
-  // delay(200);
-  // noTone(buzzer);
-  // // Sounds the buzzer at the frequency relative to the note E in Hz
-  // tone(buzzer, 329);
-  // delay(200);
-  // noTone(buzzer);
-  // // Sounds the buzzer at the frequency relative to the note F in Hz
-  // tone(buzzer, 349);
-  // delay(200);
-  // noTone(buzzer);
-  // // Sounds the buzzer at the frequency relative to the note G in Hz
-  // tone(buzzer, 392);
-  // delay(200);
-  // noTone(buzzer);
-// }

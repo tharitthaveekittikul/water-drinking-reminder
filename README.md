@@ -71,6 +71,8 @@ This project for Embedded Systems Design Laboratory.
 
 7. Install library "RTClib by Adafruit" for setting current time
 
+8. Install library "Adafruit BME280 Library by Adafruit" for using BME280
+
 ## Usage
 
 1. Setup Thingspeak

@@ -11,6 +11,7 @@
 #include "secrets.h"
 #include "RTC.h"
 #include "buzzer.h"
+#include "temp_humidity.h"
 
 #define I2C_SDA 21
 #define I2C_SCL 22
@@ -70,6 +71,15 @@ void setup() {
     Serial.println("OLED Start Work !!!");
   }
 
+  // ****** BME280 Setup ******
+  SPI.begin();
+  if (!bme.begin(0x76)) {
+    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    while (1)
+      ;
+  }
+  // ************************
+
   LINE.setToken(NOTIFY_TOKEN);
 
   // ****** RTC Setup ******
@@ -87,31 +97,29 @@ void setup() {
   redButton.begin();
   yellowButton.begin();
   greenButton.begin();
-  // pinMode(K1,INPUT_PULLUP);
-  // pinMode(K2,INPUT_PULLUP);
-  // pinMode(K3,INPUT_PULLUP);
   // ***************************
 }
 
 void loop() {
-  checkStatusWifi();
-  checkStatusMQTT();
-  checkStatusNotify();
-  // checkStatusMessageAPI();
-  // showDisplayTemp();
+  // checkStatusWifi();
+  // checkStatusMQTT();
+  // checkStatusNotify();
+
   readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
   // increase 1 for correct dayOfWeek
-  if(firstTime){
+  if (firstTime) {
+    if (dayOfWeek == 7) {
+      dayOfWeek = 1;
+    }
     dayOfWeek++;
-    setTime(second,minute,hour,dayOfWeek,dayOfMonth,month,year);
+    setTime(second, minute, hour, dayOfWeek, dayOfMonth, month, year);
     firstTime = false;
   }
   showTime();  // show in Serial Monitor
+  getTemperature();
+  getHumidity();
   readButton();
-  // showDisplayTime();
   alarm();
-  // playSound();
-
   delay(1000);
 }
 
@@ -138,27 +146,6 @@ void readButton() {
       break;
   }
 }
-//   pinMode(34,INPUT);
-//   pinMode(35,INPUT);
-//   pinMode(32,INPUT);
-//   int red = digitalRead(34);
-//   int yel = digitalRead(35);
-//   int grn = digitalRead(32);
-//   // Serial.println(red);
-//   // Serial.println(yel);
-//   // Serial.println(grn);
-//   if(red == 0){
-//     stateShow = "Temp: ";
-//   }
-//   if(yel == 0){
-//     stateShow = "Humidity: ";
-//   }
-//   if(grn == 0){
-//     stateShow = "Clock: ";
-//   }
-//   showDisplayTime();
-
-// }
 
 void checkStatusWifi() {
   // Check if WiFi is Connected
@@ -203,76 +190,12 @@ void checkStatusNotify() {
   }
 }
 
-// LINE MESSAGE API
-
-// bool checkStatusMessageAPI(){
-//   HTTPClient http;
-//   http.begin("https://api.line.me/v2/bot/message/ping");
-//   http.addHeader("Content-Type", "application/json");
-//   http.addHeader("Authorization", "Bearer " + String(LINE_TOKEN));
-
-//   int httpResponseCode = http.GET();
-//   http.end();
-//   if (httpResponseCode == 200){
-//     Serial.println("Line Messaging API is up and running");
-//     return true;
-//   }
-//   else{
-//     Serial.print("Line Messaging API returned HTTP error code ");
-//     Serial.println(httpResponseCode);
-//     return false;
-//   }
-// }
-
-// void checkStatusMessageAPI(){
-//   if(!connected){
-//     connected = client.connect("api.line.me",httpsPort);
-//     Serial.print("Connecting to Line MessageAPI.");
-//     while (!connected) {
-//       delay(500);
-//       Serial.print(".");
-//     }
-//     Serial.println("\nLine MessageAPI Connected.");
-//     // Create the message payload
-//     char *message_text = "Enjoy your water habit tracker!!";
-//     DynamicJsonDocument payloads(256);
-//     payloads["to"] = groupLine;
-//     JsonArray messages = payloads.createNestedArray("messages");
-//     JsonObject message = messages.createNestedObject();
-//     message["type"] = "text";
-//     message["text"] = message_text;
-
-//     String payload;
-//     serializeJson(payloads, payload);
-
-//     // Create the request header
-//     HTTPClient http;
-//     http.begin(LINE_API);
-//     http.addHeader("Content-Type", "application/json");
-//     http.addHeader("Authorization", "Bearer " + String(LINE_TOKEN));
-
-//     // Send the HTTP request and receive the response
-//     int httpResponseCode = http.POST(payload);
-//     Serial.print("HTTP response code: ");
-//     Serial.println(httpResponseCode);
-
-//     String responsePayload = http.getString(); // Get the response payload as a String
-//     const char* response = responsePayload.c_str();
-
-//     Serial.println(response);
-
-//     http.end();
-
-//     // Wait for 10 seconds
-//     delay(10000);
-//   }
-// }
-
 void alarm() {
   // if ((hour == 20 && minute == 45) && (second >= 0 && second < 5)) {
-  if ((hour == 20 && minute == 45) && (second >= 0 && second < 5)) {
+  if ((hour == 1 && minute == 8) && (second >= 0 && second < 5)) {
     Serial.println("Alarm");
-    playSound();
+    // playSound();
+    playNotes(buzzer,7);
   }
 }
 
@@ -302,11 +225,19 @@ void showDisplayTemp() {
   // Define textColor BLACK and Background WHITE
   OLED.setTextColor(BLACK, WHITE);
   // Define position x,y
-  OLED.setCursor(0, 0);
+  OLED.setCursor((SCREEN_WIDTH - 8 * 8) / 2, 0);
   // Set text size
   OLED.setTextSize(2);
   // Show text
-  OLED.println("TEMP:");
+  OLED.println(" TEMP ");
+
+  OLED.setCursor((SCREEN_WIDTH - 10 * 10) / 2, 0);
+  OLED.println("\n");
+  OLED.setTextColor(WHITE, BLACK);
+  OLED.setTextSize(2);
+  OLED.print(temp);
+  OLED.println(" *C");
+
   // OLED display
   OLED.display();
 }
@@ -316,11 +247,17 @@ void showDisplayHumidity() {
   // Define textColor BLACK and Background WHITE
   OLED.setTextColor(BLACK, WHITE);
   // Define position x,y
-  OLED.setCursor(0, 0);
+  OLED.setCursor((SCREEN_WIDTH - 7 * 7) / 2, 0);
   // Set text size
   OLED.setTextSize(2);
   // Show text
-  OLED.println("Humidity:");
+  OLED.println(" RH ");
+
+  OLED.println();
+  OLED.setTextColor(WHITE, BLACK);
+  OLED.setTextSize(3);
+  OLED.print(humidity);
+  OLED.println(" %");
   // OLED display
   OLED.display();
 }
@@ -333,11 +270,11 @@ void showDisplayTime() {
   // Define textColor BLACK and Background WHITE
   OLED.setTextColor(BLACK, WHITE);
   // Define position x,y
-  OLED.setCursor(0, 0);
+  OLED.setCursor((SCREEN_WIDTH - 10 * 10) / 2, 0);
   // Set text size
   OLED.setTextSize(2);
   // Show text
-  OLED.println("Clock:");
+  OLED.println(" Clock ");
 
   OLED.setTextColor(WHITE, BLACK);
   if (hour < 10) {
