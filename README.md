@@ -1,4 +1,4 @@
-# Water Habit Tracker
+# Water Drinking Reminder
 
 The project made to remind to drink water.
 This project for Embedded Systems Design Laboratory.
