@@ -9,7 +9,7 @@ volatile int minTimer = 1;
 volatile int lastDTstate = LOW;
 bool canInterrupt = false;
 
-int rotaryState = 1;
+int rotaryState = 0;
 // setDefault and can change
 int hotTemp = 28;
 int dryAirHumidity = 40;
@@ -45,10 +45,10 @@ void handleDTInterrupt() {
       else if(rotaryState == 4){
         minCoolDown--;
       }
-      if (minTimer < 0) {
+      if (minTimer <= 0) {
         minTimer = 1;
       }
-      if (minCoolDown < 0){
+      if (minCoolDown <= 0){
         minCoolDown = 1;
       }
     }

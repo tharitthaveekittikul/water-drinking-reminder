@@ -277,6 +277,7 @@ bool completeOneDay() {
 void notifyLine(String type, float value) {
   if (type == "Temp" && !isCoolDownTemp) {
     if (value >= hotTemp) {
+      countDrinkPerDay = countDrinkPerDay + 1;
       playNotes(buzzer, 7);
       LINE.notify("\nTemperature : " + String(value, 2) + " *C\n" + "ดื่มน้ำหน่อยอากาศร้อนมาก!!");
       isCoolDownTemp = true;
@@ -285,6 +286,7 @@ void notifyLine(String type, float value) {
     }
   } else if (type == "Humidity" && !isCoolDownHumidity) {
     if (value < dryAirHumidity) {
+      countDrinkPerDay = countDrinkPerDay + 1;
       playNotes(buzzer, 7);
       LINE.notify("\nRelative Humidity : " + String(value, 2) + " %\n" + "ดื่มน้ำหน่อยอากาศแห้งเดียวเจ็บคอ");
       isCoolDownHumidity = true;
@@ -341,6 +343,7 @@ void postDataMQTT() {
     dataString = "&field3=" + String(countDrinkPerDay);
     mqtt.publish(topicString.c_str(), dataString.c_str());
   }
+  mqtt.loop();
 }
 
 void showDisplayTemp() {
