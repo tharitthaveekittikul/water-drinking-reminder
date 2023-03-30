@@ -9,44 +9,53 @@ volatile int minTimer = 1;
 volatile int lastDTstate = LOW;
 bool canInterrupt = false;
 
+int rotaryState = 1;
+// setDefault and can change
+int hotTemp = 28;
+int dryAirHumidity = 40;
+int minCoolDown = 5;
+
 void handleDTInterrupt() {
   int currentDTstate = digitalRead(DT_PIN);
   if (currentDTstate != lastDTstate) {
     if (digitalRead(CLK_PIN) == currentDTstate) {
-      // secondTimer++;
-      // if (secondTimer >= 60) {
-      //   secondTimer = 0;
-      //   minTimer++;
-      //   if (minTimer >= 60) {
-      //     minTimer = 0;
-      //     if (hourTimer >= 24) {
-      //       hourTimer = 0;
-      //     }
-      //   }
-      // }
-      minTimer++;
+      if(rotaryState == 1){
+        minTimer++;
+      }
+      else if(rotaryState == 2){
+        hotTemp++;
+      }
+      else if(rotaryState == 3){
+        dryAirHumidity++;
+      }
+      else if(rotaryState == 4){
+        minCoolDown++;
+      }
+      
     } else {
-      // secondTimer--;
-      // if (secondTimer < 0) {
-      //   secondTimer = 59;
-      //   minTimer--;
-      //   if (minTimer < 0) {
-      //     minTimer = 59;
-      //     hourTimer--;
-      //     if (hourTimer < 0) {
-      //       hour = 23;
-      //     }
-      //   }
-      // }
-      minTimer--;
+      if(rotaryState == 1){
+        minTimer--;
+      }
+      else if(rotaryState == 2){
+        hotTemp--;
+      }
+      else if(rotaryState == 3){
+        dryAirHumidity--;
+      }
+      else if(rotaryState == 4){
+        minCoolDown--;
+      }
       if (minTimer < 0) {
-        minTimer = 0;
+        minTimer = 1;
+      }
+      if (minCoolDown < 0){
+        minCoolDown = 1;
       }
     }
   }
   lastDTstate = currentDTstate;
 }
 
-bool isPressSwitchRT() {
-  return digitalRead(SW_PIN) == LOW;
-}
+// bool isPressSwitchRT() {
+//   return digitalRead(SW_PIN) == LOW;
+// }

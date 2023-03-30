@@ -55,6 +55,13 @@ This project for Embedded Systems Design Laboratory.
    K2 - D35 <br>
    K3 - D32 <br>
 
+6. Connect HW-040 Rotary module to the ESP32. <br>
+   "+" - 3V3 <br>
+   GND - GND <br>
+   SW - D33 <br>
+   DT - D25 <br>
+   CLK - D26 <br>
+
 ## Installation
 
 1. Install library "Adafruit SSD1306 by Adafruit" for OLED

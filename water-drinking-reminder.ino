@@ -25,8 +25,12 @@
 Button redButton(K1, 25, true, true);
 Button yellowButton(K2, 25, true, true);
 Button greenButton(K3, 25, true, true);
+Button rotaryButton(SW_PIN, 25, true, true);
 // default state 1 --> show Temperature
 int buttonState = 1;
+
+// Variables for using default
+int countDrinkPerDay = 0;
 
 // Thingspeak MQTT & Wifi Setup
 const char *ssid = SECRET_WIFI_SSID;
@@ -111,7 +115,8 @@ void setup() {
   redButton.begin();
   yellowButton.begin();
   greenButton.begin();
-  pinMode(SW_PIN, INPUT_PULLUP);
+  rotaryButton.begin();
+  // pinMode(SW_PIN, INPUT_PULLUP);
   pinMode(DT_PIN, INPUT_PULLUP);
   pinMode(CLK_PIN, INPUT_PULLUP);
   // ***************************
@@ -134,46 +139,76 @@ void loop() {
     setTime(second, minute, hour, dayOfWeek, dayOfMonth, month, year);
     firstTime = false;
   }
-  showTime();  // show in Serial Monitor
+  // showTime();  // show in Serial Monitor
   getTemperature();
   getHumidity();
   readButton();
-  alarm();
   postDataMQTT();
   resetCoolDown();
-  delay(1000);
+  if (completeOneDay()) {
+    countDrinkPerDay = 0;
+  }
+  // delay(1000);
 }
 
 void readButton() {
-  if (greenButton.read()) {
+  greenButton.read();
+  yellowButton.read();
+  redButton.read();
+  rotaryButton.read();
+  if (greenButton.wasPressed()) {
     buttonState = 1;
+    rotaryState = 0;
     canInterrupt = false;
-  } else if (yellowButton.read()) {
+  }
+  if (yellowButton.wasPressed()) {
     buttonState = 2;
+    rotaryState = 0;
     canInterrupt = false;
-  } else if (redButton.read()) {
+  }
+  if (redButton.wasPressed()) {
     buttonState = 3;
+    rotaryState = 0;
     canInterrupt = false;
-  } else if (isPressSwitchRT()) {
+  }
+  if (rotaryButton.wasPressed()) {
     buttonState = 4;
+    rotaryState++;
+    if (rotaryState > 4) {
+      rotaryState = 1;
+    }
     canInterrupt = true;
   }
   switch (buttonState) {
     case 1:
-      Serial.println("Show Temperature");
+      // Serial.println("Show Temperature");
       showDisplayTemp();
       break;
     case 2:
-      Serial.println("Show Humidity");
+      // Serial.println("Show Humidity");
       showDisplayHumidity();
       break;
     case 3:
-      Serial.println("Show Real Time Clock");
+      // Serial.println("Show Real Time Clock");
       showDisplayTime();
       break;
     case 4:
-      Serial.println("Show Set Timer");
-      showDisplaySetTimer();
+      // Serial.println("Show Set Timer");
+      switch (rotaryState) {
+        case 1:
+          showDisplaySetTimer();
+          break;
+        case 2:
+          showDisplaySetTempDefault();
+          break;
+        case 3:
+          showDisplaySetHumidityDefault();
+          break;
+        case 4:
+          showDisplaySetCoolDown();
+          break;
+      }
+      // showDisplaySetTimer();
       break;
   }
 }
@@ -183,6 +218,7 @@ void checkStatusWifi() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.print("Connecting to : ");
     Serial.print(ssid);
+
     // Connect ESP32 to network
     WiFi.begin(ssid, pass);
 
@@ -194,6 +230,7 @@ void checkStatusWifi() {
     Serial.println("\nWiFi Connected.");
   }
 }
+
 
 void checkStatusMQTT() {
   //Check if MQTT Server is connected
@@ -228,27 +265,40 @@ void alarm() {
   }
 }
 
+bool completeOneDay() {
+  if ((hour == 0 && minute == 0)) {
+    LINE.notify("\nวันนี้ดื่มน้ำไปทั้งหมด " + String(countDrinkPerDay) + "ครั้ง");
+    Serial.println("COMPLETE-ONE-DAY");
+    return true;
+  }
+  return false;
+}
+
 void notifyLine(String type, float value) {
   if (type == "Temp" && !isCoolDownTemp) {
-    if (value >= 30) {
+    if (value >= hotTemp) {
       playNotes(buzzer, 7);
-      LINE.notify("Temperature : " + String(value, 2) + " *C\n" + "ดื่มน้ำหน่อยอากาศร้อนมาก!!");
+      LINE.notify("\nTemperature : " + String(value, 2) + " *C\n" + "ดื่มน้ำหน่อยอากาศร้อนมาก!!");
       isCoolDownTemp = true;
       // CountDown 30 minutes --> change state time to false
+      showTime();
     }
   } else if (type == "Humidity" && !isCoolDownHumidity) {
-    if (value < 58) {
+    if (value < dryAirHumidity) {
       playNotes(buzzer, 7);
-      LINE.notify("Relative Humidity : " + String(value, 2) + " %\n" + "ดื่มน้ำหน่อยอากาศแห้งเดียวเจ็บคอ");
+      LINE.notify("\nRelative Humidity : " + String(value, 2) + " %\n" + "ดื่มน้ำหน่อยอากาศแห้งเดียวเจ็บคอ");
       isCoolDownHumidity = true;
+      showTime();
     }
   }
   // else if Time also
   else if (type == "Timer") {
     if (minute == prevMin + value) {
       prevMin = minute;
-      playNotes(buzzer,7);
-      LINE.notify("ครบ " + String(minTimer) + " นาทีแล้วดื่มน้ำหน่อยนะ");
+      countDrinkPerDay = countDrinkPerDay + 1;
+      playNotes(buzzer, 7);
+      LINE.notify("\nครบ " + String(minTimer) + " นาทีแล้วดื่มน้ำหน่อยนะ");
+      showTime();
     }
   }
 }
@@ -256,7 +306,7 @@ void notifyLine(String type, float value) {
 void resetCoolDown() {
   static uint32_t lastPrintTime = 0;
   // timeIntervalReset can Change
-  const unsigned int timeIntervalReset = 300000;  // 5 min
+  const unsigned int timeIntervalReset = minCoolDown * 60000;  // 5 min --> 1 min = 60000
   uint32_t currentTime = millis();
   if (currentTime - lastPrintTime >= timeIntervalReset) {
     isCoolDownTemp = false;
@@ -270,7 +320,7 @@ void resetCoolDown() {
 void postDataMQTT() {
   notifyLine("Temp", temp);
   notifyLine("Humidity", humidity);
-  notifyLine("Timer",minTimer);
+  notifyLine("Timer", minTimer);
 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
@@ -286,6 +336,9 @@ void postDataMQTT() {
     mqtt.publish(topicString.c_str(), dataString.c_str());
 
     dataString = "&field2=" + String(humidity);
+    mqtt.publish(topicString.c_str(), dataString.c_str());
+
+    dataString = "&field3=" + String(countDrinkPerDay);
     mqtt.publish(topicString.c_str(), dataString.c_str());
   }
 }
@@ -412,7 +465,7 @@ void showDisplaySetTimer() {
   OLED.println("Set Timer");
   OLED.setTextColor(WHITE, BLACK);
   OLED.println("\n");
-  OLED.setCursor((SCREEN_WIDTH - 6 * 6) / 2, (SCREEN_HEIGHT) / 2);
+  OLED.setCursor(0, (SCREEN_HEIGHT) / 2);
   OLED.setTextSize(3);
 
 
@@ -425,6 +478,104 @@ void showDisplaySetTimer() {
     OLED.print("0");
   }
   OLED.print(minTimer, DEC);
+  OLED.println(" min");
+  // OLED.print(":");
+  // if (secondTimer < 10) {
+  //   OLED.print("0");
+  // }
+  // OLED.println(secondTimer, DEC);
+
+  // OLED display
+  OLED.display();
+}
+
+void showDisplaySetTempDefault() {
+  // Clear Screen
+  OLED.clearDisplay();
+  // Define textColor BLACK and Background WHITE
+  OLED.setTextColor(BLACK, WHITE);
+  // Define position x,y
+  OLED.setCursor(0, 0);
+  // Set text size
+  OLED.setTextSize(2);
+  // Show text
+  OLED.println("Set Temp");
+  OLED.setTextColor(WHITE, BLACK);
+  OLED.println("\n");
+  OLED.setCursor((SCREEN_WIDTH - 6 * 6) / 2, (SCREEN_HEIGHT) / 2);
+  OLED.setTextSize(3);
+
+
+  // if (hourTimer < 10) {
+  //   OLED.print("0");
+  // }
+  // OLED.print(hourTimer, DEC);
+  // OLED.print(":");
+  if (hotTemp < 10) {
+    OLED.print("0");
+  }
+  OLED.setTextSize(2);
+  OLED.print(hotTemp, DEC);
+  OLED.println(" *C");
+  // OLED.print(":");
+  // if (secondTimer < 10) {
+  //   OLED.print("0");
+  // }
+  // OLED.println(secondTimer, DEC);
+
+  // OLED display
+  OLED.display();
+}
+
+void showDisplaySetHumidityDefault() {
+  // Clear Screen
+  OLED.clearDisplay();
+  // Define textColor BLACK and Background WHITE
+  OLED.setTextColor(BLACK, WHITE);
+  // Define position x,y
+  OLED.setCursor(0, 0);
+  // Set text size
+  OLED.setTextSize(2);
+  // Show text
+  OLED.println("Set Humid");
+  OLED.setTextColor(WHITE, BLACK);
+  OLED.println("\n");
+  OLED.setCursor((SCREEN_WIDTH - 6 * 6) / 2, (SCREEN_HEIGHT) / 2);
+  OLED.setTextSize(3);
+
+  OLED.print(dryAirHumidity, DEC);
+  OLED.println(" %");
+  // OLED.print(":");
+  // if (secondTimer < 10) {
+  //   OLED.print("0");
+  // }
+  // OLED.println(secondTimer, DEC);
+
+  // OLED display
+  OLED.display();
+}
+
+void showDisplaySetCoolDown() {
+  // Clear Screen
+  OLED.clearDisplay();
+  // Define textColor BLACK and Background WHITE
+  OLED.setTextColor(BLACK, WHITE);
+  // Define position x,y
+  OLED.setCursor(0, 0);
+  // Set text size
+  OLED.setTextSize(2);
+  // Show text
+  OLED.println("Cooldown");
+  OLED.setTextColor(WHITE, BLACK);
+  OLED.println("\n");
+  OLED.setCursor(0, (SCREEN_HEIGHT) / 2);
+  OLED.setTextSize(3);
+
+  if (minCoolDown < 10) {
+    OLED.print("0");
+  }
+  OLED.print(minCoolDown, DEC);
+  OLED.println(" min");
   // OLED.print(":");
   // if (secondTimer < 10) {
   //   OLED.print("0");
