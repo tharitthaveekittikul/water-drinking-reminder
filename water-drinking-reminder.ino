@@ -35,11 +35,13 @@ int countDrinkPerDay = 0;
 // Thingspeak MQTT & Wifi Setup
 const char *ssid = SECRET_WIFI_SSID;
 const char *pass = SECRET_WIFI_PASS;
-const char *server = SECRET_THINGSPEAK_SERVER;
+// const char *server = SECRET_THINGSPEAK_SERVER;
+const char *server = "mqtt3.thingspeak.com";
 const char *channelID = SECRET_CHANNELID;
 const char *mqttUserName = SECRET_MQTT_USERNAME;
 const char *mqttPass = SECRET_MQTT_PASSWORD;
 const char *clientID = SECRET_MQTT_CLIENT_ID;
+const char *thingSpeakAPI = THING_SPEAK_API;
 
 // Line Notify
 const char *NOTIFY_TOKEN = LINE_NOTIFY_TOKEN;
@@ -56,9 +58,11 @@ unsigned long previousMillis = 0;            // variable to store the previous m
 const unsigned long interval = 500;          // interval at which to update the half second count (in ms)
 const unsigned int publishInterval = 15000;  // interval at which to publish data (in ms)
 unsigned long lastPublishTime = 0;           // variable to store the last time data was published
+int round_mqtt = 1;
 
 WiFiClient client;
 PubSubClient mqtt(client);
+HTTPClient http;
 
 // ****** OLED Configuration ******
 
@@ -104,10 +108,10 @@ void setup() {
   // day of week (1=Sunday, 7=Saturday)
   // set date (1 to 31)
   // set year (2000+ (0-99)) ex: 2023
-  rtc.begin();
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // rtc.begin();
+  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // rtcInit();
   // ************************
-  readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
   prevMin = minute;
 
   // ****** Pinmode Setup ******
@@ -127,18 +131,19 @@ void setup() {
 
 void loop() {
   checkStatusWifi();
+  rtcInit();
   checkStatusMQTT();
   checkStatusNotify();
   readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
   // increase 1 for correct dayOfWeek
-  if (firstTime) {
-    if (dayOfWeek == 7) {
-      dayOfWeek = 1;
-    }
-    dayOfWeek++;
-    setTime(second, minute, hour, dayOfWeek, dayOfMonth, month, year);
-    firstTime = false;
-  }
+  // if (firstTime) {
+  //   if (dayOfWeek == 7) {
+  //     dayOfWeek = 1;
+  //   }
+  //   dayOfWeek++;
+  //   setTime(second, minute, hour, dayOfWeek, dayOfMonth, month, year);
+  //   firstTime = false;
+  // }
   // showTime();  // show in Serial Monitor
   getTemperature();
   getHumidity();
@@ -333,15 +338,21 @@ void postDataMQTT() {
   // Publish data every `publishInterval` milliseconds
   if (currentMillis - lastPublishTime >= publishInterval) {
     lastPublishTime = currentMillis;
+
     String topicString = "channels/" + String(channelID) + "/publish";
-    String dataString = "&field1=" + String(temp);
-    mqtt.publish(topicString.c_str(), dataString.c_str());
-
-    dataString = "&field2=" + String(humidity);
-    mqtt.publish(topicString.c_str(), dataString.c_str());
-
-    dataString = "&field3=" + String(countDrinkPerDay);
-    mqtt.publish(topicString.c_str(), dataString.c_str());
+    String dataString;
+    if (round_mqtt == 1) {
+      dataString = "&field1=" + String(temp);
+      mqtt.publish(topicString.c_str(), dataString.c_str());
+    } else if (round_mqtt == 2) {
+      dataString = "&field2=" + String(humidity);
+      mqtt.publish(topicString.c_str(), dataString.c_str());
+    } else {
+      dataString = "&field3=" + String(countDrinkPerDay);
+      mqtt.publish(topicString.c_str(), dataString.c_str());
+      round_mqtt = 0;
+    }
+    round_mqtt++;
   }
   mqtt.loop();
 }

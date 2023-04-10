@@ -4,7 +4,7 @@
 #define CLK_PIN 26
 
 // volatile int hourTimer = 0;
-volatile int minTimer = 1;
+volatile int minTimer = 10;
 // volatile int secondTimer = 0;
 volatile int lastDTstate = LOW;
 bool canInterrupt = false;

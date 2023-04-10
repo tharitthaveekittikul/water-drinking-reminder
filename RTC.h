@@ -1,11 +1,21 @@
 #include <RTClib.h>  // Include the RTC library
+#include <time.h>
 
 #define DS3231_I2C_ADDR 0x68
 
-RTC_DS3231 rtc; // create an RTC_DS3231 object
+RTC_DS3231 rtc;  // create an RTC_DS3231 object
 
 uint second, minute, hour, dayOfWeek, dayOfMonth, month, year;
 bool firstTime = true;
+
+// server
+const char ntp_server1[20] = "pool.ntp.org";
+const char ntp_server2[20] = "time.nist.gov";
+const char ntp_server3[20] = "time.uni.net.th";
+const long GMTOffset = 7;
+const int DSTOffset = 0;
+
+struct tm timeinfo;
 
 byte decToBcd(uint val) {
   return ((val / 10 * 16) + (val % 10));
@@ -97,6 +107,27 @@ void showTime() {
 }
 
 time_t getTime() {
-  DateTime now = rtc.now(); // get the current time from the RTC module
-  return now.unixtime(); // return the time in Unix format
+  DateTime now = rtc.now();  // get the current time from the RTC module
+  return now.unixtime();     // return the time in Unix format
+}
+
+void rtcInit() {
+  if (firstTime) {
+    configTime(GMTOffset * 3600, DSTOffset, ntp_server1, ntp_server2, ntp_server3);
+    rtc.begin();
+    while (!getLocalTime(&timeinfo)) {
+    }
+    // if(rtc.lostPower()){
+    //   rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
+    // }
+    rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
+    readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
+
+    if (dayOfWeek == 7) {
+      dayOfWeek = 1;
+    }
+    dayOfWeek++;
+    setTime(second, minute, hour, dayOfWeek, dayOfMonth, month, year);
+    firstTime = false;
+  }
 }
