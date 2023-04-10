@@ -15,6 +15,9 @@ const char ntp_server3[20] = "time.uni.net.th";
 const long GMTOffset = 7;
 const int DSTOffset = 0;
 
+int prevMin;
+
+
 struct tm timeinfo;
 
 byte decToBcd(uint val) {
@@ -128,6 +131,7 @@ void rtcInit() {
     }
     dayOfWeek++;
     setTime(second, minute, hour, dayOfWeek, dayOfMonth, month, year);
+    prevMin = minute;
     firstTime = false;
   }
 }

@@ -51,7 +51,6 @@ bool line_connected = false;
 bool isCoolDownTemp = false;
 bool isCoolDownHumidity = false;
 // uint tempTime, humidityTime;
-int prevMin;
 
 // MQTT POST
 unsigned long previousMillis = 0;            // variable to store the previous millis() value
@@ -112,7 +111,7 @@ void setup() {
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   // rtcInit();
   // ************************
-  prevMin = minute;
+
 
   // ****** Pinmode Setup ******
   pinMode(buzzer, OUTPUT);
@@ -300,6 +299,7 @@ void notifyLine(String type, float value) {
   }
   // else if Time also
   else if (type == "Timer") {
+    readTime(&second, &minute, &hour, &dayOfWeek, &dayOfMonth, &month, &year);
     if (minute == prevMin + value) {
       prevMin = minute;
       countDrinkPerDay = countDrinkPerDay + 1;
